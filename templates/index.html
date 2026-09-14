@@ -19,7 +19,13 @@
         <p class="nav-label">STUDY SPACE</p>
         <button class="nav-item active"><span>◉</span> Study assistant</button>
         <button class="nav-item" id="flashcardButton"><span>▣</span> Flashcards</button>
-        <button class="nav-item"><span>◷</span> Recent chats</button>
+        <div class="recent-wrap">
+          <button class="nav-item" id="recentChatsButton" type="button" aria-expanded="false" aria-controls="recentChatsPanel"><span>◷</span> Recent chats</button>
+          <div class="recent-panel" id="recentChatsPanel" hidden>
+            <p class="recent-empty" id="recentChatsEmpty">No recent chats yet.</p>
+            <div id="recentChatsList"></div>
+          </div>
+        </div>
       </nav>
       <div class="sidebar-footer"><div class="avatar">A</div><div><strong>Alex's space</strong><small>Ready to learn</small></div><span class="dots">•••</span></div>
     </aside>
