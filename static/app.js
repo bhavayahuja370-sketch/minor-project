@@ -47,9 +47,69 @@ async function sendMessage(value) {
     const data = await res.json();
     indicator.remove();
     addMessage(data.reply || data.error || 'I could not generate a response.', 'assistant');
+    if (data.reply) refreshRecentChats();
   } catch (_) {
     indicator.remove(); addMessage('I’m having trouble connecting. Please try again.', 'assistant');
   }
+}
+
+// --- Recent chats (backed by /api/chat-history) ---
+const recentChatsButton = document.querySelector('#recentChatsButton');
+const recentChatsPanel = document.querySelector('#recentChatsPanel');
+const recentChatsList = document.querySelector('#recentChatsList');
+const recentChatsEmpty = document.querySelector('#recentChatsEmpty');
+
+function renderRecentChats(history) {
+  if (!recentChatsList) return;
+  recentChatsList.innerHTML = '';
+  if (!history.length) {
+    if (recentChatsEmpty) recentChatsEmpty.style.display = '';
+    return;
+  }
+  if (recentChatsEmpty) recentChatsEmpty.style.display = 'none';
+  history.forEach(item => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'recent-item';
+    const snippet = document.createElement('span');
+    snippet.className = 'recent-snippet';
+    snippet.textContent = item.user_message;
+    const time = document.createElement('span');
+    time.className = 'recent-time';
+    time.textContent = new Date(item.created_at).toLocaleString();
+    button.appendChild(snippet);
+    button.appendChild(time);
+    button.addEventListener('click', () => {
+      welcome.style.display = 'none';
+      messages.innerHTML = '';
+      addMessage(item.user_message, 'user');
+      addMessage(item.assistant_response, 'assistant');
+      recentChatsPanel.hidden = true;
+      recentChatsButton.setAttribute('aria-expanded', 'false');
+    });
+    recentChatsList.appendChild(button);
+  });
+}
+
+async function refreshRecentChats() {
+  if (!recentChatsList) return;
+  try {
+    const res = await fetch('/api/chat-history');
+    if (!res.ok) return;
+    const data = await res.json();
+    renderRecentChats(data.history || []);
+  } catch (_) {
+    // Recent chats are a convenience feature; a failed fetch should stay silent.
+  }
+}
+
+if (recentChatsButton) {
+  recentChatsButton.addEventListener('click', () => {
+    const opening = recentChatsPanel.hidden;
+    recentChatsPanel.hidden = !opening;
+    recentChatsButton.setAttribute('aria-expanded', String(opening));
+    if (opening) refreshRecentChats();
+  });
 }
 
 chatForm.addEventListener('submit', e => { e.preventDefault(); sendMessage(input.value); });
