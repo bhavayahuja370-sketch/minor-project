@@ -1,12 +1,31 @@
 import os
 import re
 import random
-from datetime import datetime
+import uuid
+from datetime import datetime, timedelta
 
 from flask import Flask, jsonify, render_template, request, session
 
+import db
+
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY", "nova-local-development-key")
+
+# Recent chats should survive across browser restarts, so the session cookie
+# that carries the anonymous chat_session_id is kept for 30 days.
+app.permanent_session_lifetime = timedelta(days=30)
+
+# Create the chat_history table if needed. This is safe to call even if
+# DATABASE_URL is missing or Neon is unreachable — db.init_db() never raises.
+db.init_db()
+
+
+def get_chat_session_id() -> str:
+    """Return a stable per-browser session id for chat history, creating one if needed."""
+    if "chat_session_id" not in session:
+        session["chat_session_id"] = str(uuid.uuid4())
+        session.permanent = True
+    return session["chat_session_id"]
 
 QUIZ_QUESTIONS = [
     {
@@ -287,6 +306,10 @@ def chat():
     if not message:
         return jsonify({"error": "Please enter a question."}), 400
 
+    # Tracks which provider actually produced the returned answer, for chat-history
+    # storage only. Defaults to "local" and is only overridden when an AI call succeeds.
+    provider_used = "local"
+
     active_quiz = session.get("active_quiz")
     selected_answer = re.fullmatch(r"\s*([a-dA-D])[.!?\s]*", message)
     if active_quiz and selected_answer:
@@ -307,18 +330,42 @@ def chat():
         # if it fails there is no local answer to fall back to for this topic.
         if is_sql_question and not is_quiz_request:
             ai_answer = ai_response(model, message, subject, level, "")
-            answer = ai_answer or "Sorry, I couldn't find a reliable answer to that question right now."
+            if ai_answer:
+                answer = ai_answer
+                provider_used = model
+            else:
+                answer = "Sorry, I couldn't find a reliable answer to that question right now."
         # Selected AI model is the primary source for technical topics; local study notes are
         # only used as a fallback if the AI call fails. The two are never shown together.
         elif any(topic in lower_message for topic in supported_topics) and not is_quiz_request:
             local_answer = demo_response(message, subject, level)
             ai_answer = ai_response(model, message, subject, level, local_answer)
-            answer = ai_answer if ai_answer else local_answer
+            if ai_answer:
+                answer = ai_answer
+                provider_used = model
+            else:
+                answer = local_answer
         else:
             # Greetings, quiz generation, and study-plan requests stay fully local — unaffected
             # by model selection, exactly as before.
             answer = demo_response(message, subject, level)
+
+    # Persist the exchange for "recent chats". This never affects the response above:
+    # db.save_message() swallows and logs any database error instead of raising.
+    chat_session_id = get_chat_session_id()
+    db.save_message(chat_session_id, message, answer, provider_used)
+
     return jsonify({"reply": answer, "time": datetime.now().strftime("%I:%M %p"), "model": model})
+
+
+@app.route("/api/chat-history", methods=["GET"])
+def chat_history():
+    """Return this browser's recent chat exchanges, newest first."""
+    chat_session_id = session.get("chat_session_id")
+    if not chat_session_id:
+        return jsonify({"history": []})
+    history = db.get_recent_messages(chat_session_id, limit=20)
+    return jsonify({"history": history})
 
 
 @app.route("/api/flashcards", methods=["POST"])
@@ -337,4 +384,5 @@ def flashcards():
 if __name__ == "__main__":
     print(f"Gemini API key configured: {gemini_is_configured()}")
     print(f"OpenAI API key configured: {openai_is_configured()}")
+    print(f"Neon PostgreSQL (chat history) connected: {db.is_enabled()}")
     app.run(debug=True)
