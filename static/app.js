@@ -5,393 +5,446 @@ const welcome = document.querySelector('#welcome');
 const subject = document.querySelector('#subject');
 const level = document.querySelector('#level');
 const themeToggle = document.querySelector('#themeToggle');
-const modelSelect = document.querySelector('#modelSelect');
 
-// Remember the selected AI model for the current browser session only.
-modelSelect.value = sessionStorage.getItem('nova-model') || 'gemini';
+const modelSelect =
+  document.querySelector('#model') ||
+  document.querySelector('#modelSelect');
 
-modelSelect.addEventListener('change', () => {
-    sessionStorage.setItem('nova-model', modelSelect.value);
-});
+const recentChatsButton = document.querySelector('#recentChatsButton');
+const recentChatsPanel = document.querySelector('#recentChatsPanel');
+const recentChatsList = document.querySelector('#recentChatsList');
+const recentChatsEmpty = document.querySelector('#recentChatsEmpty');
+
+
+// =========================
+// THEME
+// =========================
 
 function setTheme(theme) {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem('nova-theme', theme);
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem('nova-theme', theme);
 
+  if (themeToggle) {
     const dark = theme === 'dark';
+    const label = `Switch to ${dark ? 'light' : 'dark'} mode`;
 
-    themeToggle.setAttribute(
-        'aria-label',
-        `Switch to ${dark ? 'light' : 'dark'} mode`
-    );
-
-    themeToggle.title = themeToggle.getAttribute('aria-label');
+    themeToggle.setAttribute('aria-label', label);
+    themeToggle.title = label;
+  }
 }
 
 setTheme(
-    localStorage.getItem('nova-theme') ||
-    (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+  localStorage.getItem('nova-theme') ||
+  (matchMedia('(prefers-color-scheme: dark)').matches
+    ? 'dark'
+    : 'light')
 );
 
-themeToggle.addEventListener('click', () => {
+if (themeToggle) {
+  themeToggle.addEventListener('click', () => {
     setTheme(
-        document.documentElement.dataset.theme === 'dark'
-            ? 'light'
-            : 'dark'
+      document.documentElement.dataset.theme === 'dark'
+        ? 'light'
+        : 'dark'
     );
-});
+  });
+}
+
+
+// =========================
+// MODEL SELECTION
+// =========================
+
+const savedModel = sessionStorage.getItem('stars-model');
+
+if (modelSelect && savedModel) {
+  modelSelect.value = savedModel;
+}
+
+if (modelSelect) {
+  modelSelect.addEventListener('change', () => {
+    sessionStorage.setItem('stars-model', modelSelect.value);
+  });
+}
+
+
+// =========================
+// ADD MESSAGE
+// =========================
 
 function addMessage(text, role, typing = false) {
-    const item = document.createElement('div');
+  const item = document.createElement('div');
 
-    item.className =
-        `message ${role}${typing ? ' typing' : ''} message-enter`;
+  item.className =
+    `message ${role}${typing ? ' typing' : ''} message-enter`;
 
-    if (role === 'assistant') {
-        item.innerHTML = '<div class="bot-avatar">✦</div>';
-    }
+  if (role === 'assistant') {
+    item.innerHTML = '<div class="bot-avatar">✦</div>';
+  }
 
-    const bubble = document.createElement('div');
-    bubble.className = 'bubble';
-    bubble.textContent = text;
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = text;
 
-    item.appendChild(bubble);
-    messages.appendChild(item);
+  item.appendChild(bubble);
+  messages.appendChild(item);
 
-    item.scrollIntoView({
-        behavior: 'smooth',
-        block: 'end'
-    });
+  item.scrollIntoView({
+    behavior: 'smooth',
+    block: 'end'
+  });
 
-    return item;
-}
-
-async function sendMessage(value) {
-    const text = value.trim();
-
-    if (!text) return;
-
-    welcome.style.display = 'none';
-
-    addMessage(text, 'user');
-
-    input.value = '';
-    input.style.height = 'auto';
-
-    const indicator = addMessage(
-        'Nova is thinking…',
-        'assistant',
-        true
-    );
-
-    try {
-        const res = await fetch('/api/chat', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                message: text,
-                subject: subject.value,
-                level: level.value,
-                model: modelSelect.value
-            })
-        });
-
-        const data = await res.json();
-
-        indicator.remove();
-
-        addMessage(
-            data.reply ||
-            data.error ||
-            'I could not generate a response.',
-            'assistant'
-        );
-
-        // Refresh Recent Chats after a successful response.
-        if (data.reply) {
-            await refreshRecentChats();
-        }
-
-    } catch (error) {
-        console.error('Chat error:', error);
-
-        indicator.remove();
-
-        addMessage(
-            'I’m having trouble connecting. Please try again.',
-            'assistant'
-        );
-    }
+  return item;
 }
 
 
-// =====================================================
-// Recent Chats (backed by /api/chat-history)
-// =====================================================
-
-const recentChatsButton =
-    document.querySelector('#recentChatsButton');
-
-const recentChatsPanel =
-    document.querySelector('#recentChatsPanel');
-
-const recentChatsList =
-    document.querySelector('#recentChatsList');
-
-const recentChatsEmpty =
-    document.querySelector('#recentChatsEmpty');
-
+// =========================
+// RECENT CHATS
+// =========================
 
 function renderRecentChats(history) {
-    if (!recentChatsList) return;
+  if (!recentChatsList) return;
 
-    recentChatsList.innerHTML = '';
+  recentChatsList.innerHTML = '';
 
-    if (!Array.isArray(history) || history.length === 0) {
-        if (recentChatsEmpty) {
-            recentChatsEmpty.style.display = '';
-        }
-
-        return;
-    }
-
+  if (!Array.isArray(history) || history.length === 0) {
     if (recentChatsEmpty) {
-        recentChatsEmpty.style.display = 'none';
+      recentChatsEmpty.style.display = '';
     }
 
-    history.forEach(item => {
-        const button = document.createElement('button');
+    return;
+  }
 
-        button.type = 'button';
-        button.className = 'recent-item';
+  if (recentChatsEmpty) {
+    recentChatsEmpty.style.display = 'none';
+  }
 
-        const snippet = document.createElement('span');
+  history.forEach(chat => {
+    const item = document.createElement('button');
 
-        snippet.className = 'recent-snippet';
+    item.type = 'button';
+    item.className = 'recent-chat-item';
 
-        snippet.textContent =
-            item.user_message || 'New chat';
+    const title =
+      chat.user_message ||
+      chat.message ||
+      'Untitled chat';
 
-        const time = document.createElement('span');
+    const date = chat.created_at
+      ? new Date(chat.created_at).toLocaleString()
+      : '';
 
-        time.className = 'recent-time';
+    item.innerHTML = `
+      <span class="recent-chat-title"></span>
+      <small class="recent-chat-time"></small>
+    `;
 
-        if (item.created_at) {
-            const date = new Date(item.created_at);
+    item.querySelector('.recent-chat-title').textContent = title;
+    item.querySelector('.recent-chat-time').textContent = date;
 
-            time.textContent =
-                isNaN(date.getTime())
-                    ? ''
-                    : date.toLocaleString();
-        }
+    item.addEventListener('click', () => {
+      messages.innerHTML = '';
+      welcome.style.display = 'none';
 
-        button.appendChild(snippet);
-        button.appendChild(time);
+      addMessage(
+        chat.user_message || chat.message || '',
+        'user'
+      );
 
-        button.addEventListener('click', () => {
-            welcome.style.display = 'none';
+      if (chat.assistant_response) {
+        addMessage(
+          chat.assistant_response,
+          'assistant'
+        );
+      }
 
-            messages.innerHTML = '';
+      if (recentChatsPanel) {
+        recentChatsPanel.classList.remove('open');
+      }
 
-            addMessage(
-                item.user_message || '',
-                'user'
-            );
-
-            addMessage(
-                item.assistant_response || '',
-                'assistant'
-            );
-
-            if (recentChatsPanel) {
-                recentChatsPanel.hidden = true;
-            }
-
-            if (recentChatsButton) {
-                recentChatsButton.setAttribute(
-                    'aria-expanded',
-                    'false'
-                );
-            }
-        });
-
-        recentChatsList.appendChild(button);
+      input.focus();
     });
+
+    recentChatsList.appendChild(item);
+  });
 }
 
 
 async function refreshRecentChats() {
-    if (!recentChatsList) return;
+  if (!recentChatsList) return;
 
-    try {
-        const res = await fetch('/api/chat-history', {
-            method: 'GET',
-            headers: {
-                'Accept': 'application/json'
-            },
-            cache: 'no-store'
-        });
+  try {
+    const res = await fetch('/api/chat-history', {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
 
-        if (!res.ok) {
-            console.error(
-                'Chat history request failed:',
-                res.status
-            );
-
-            return;
-        }
-
-        const data = await res.json();
-
-        console.log('Recent chats data:', data);
-
-        /*
-         * Supports both backend formats:
-         *
-         * {
-         *     "history": [...]
-         * }
-         *
-         * OR
-         *
-         * [...]
-         */
-        const history = Array.isArray(data)
-            ? data
-            : Array.isArray(data.history)
-                ? data.history
-                : [];
-
-        renderRecentChats(history);
-
-    } catch (error) {
-        console.error(
-            'Could not load recent chats:',
-            error
-        );
+    if (!res.ok) {
+      throw new Error(`History request failed: ${res.status}`);
     }
+
+    const data = await res.json();
+
+    console.log('Recent Chats:', data);
+
+    const history = Array.isArray(data)
+      ? data
+      : Array.isArray(data.history)
+        ? data.history
+        : [];
+
+    renderRecentChats(history);
+
+  } catch (error) {
+    console.error('Could not load recent chats:', error);
+
+    renderRecentChats([]);
+  }
 }
 
 
-// Open / close Recent Chats
 if (recentChatsButton && recentChatsPanel) {
-    recentChatsButton.addEventListener('click', async () => {
-        const opening = recentChatsPanel.hidden;
+  recentChatsButton.addEventListener('click', async () => {
+    recentChatsPanel.classList.toggle('open');
 
-        recentChatsPanel.hidden = !opening;
-
-        recentChatsButton.setAttribute(
-            'aria-expanded',
-            String(opening)
-        );
-
-        if (opening) {
-            await refreshRecentChats();
-        }
-    });
+    if (recentChatsPanel.classList.contains('open')) {
+      await refreshRecentChats();
+    }
+  });
 }
 
 
-// Load Recent Chats when page loads
-document.addEventListener('DOMContentLoaded', () => {
-    refreshRecentChats();
-});
+// =========================
+// SEND MESSAGE
+// =========================
 
+async function sendMessage(value) {
+  const text = value.trim();
 
-// =====================================================
-// Existing Chat Controls
-// =====================================================
+  if (!text) return;
 
-chatForm.addEventListener('submit', e => {
-    e.preventDefault();
-    sendMessage(input.value);
-});
+  welcome.style.display = 'none';
 
+  addMessage(text, 'user');
 
-document
-    .querySelectorAll('[data-prompt]')
-    .forEach(button => {
-        button.addEventListener('click', () => {
-            sendMessage(button.dataset.prompt);
-        });
+  input.value = '';
+  input.style.height = 'auto';
+
+  const indicator = addMessage(
+    'Nova is thinking…',
+    'assistant',
+    true
+  );
+
+  try {
+    const payload = {
+      message: text,
+      subject: subject ? subject.value : 'General',
+      level: level ? level.value : 'High school'
+    };
+
+    if (modelSelect && modelSelect.value) {
+      payload.model = modelSelect.value;
+    }
+
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
     });
 
+    const data = await res.json();
 
-input.addEventListener('input', () => {
+    indicator.remove();
+
+    if (!res.ok) {
+      addMessage(
+        data.error ||
+        'I could not generate a response.',
+        'assistant'
+      );
+
+      return;
+    }
+
+    addMessage(
+      data.reply ||
+      data.error ||
+      'I could not generate a response.',
+      'assistant'
+    );
+
+    // IMPORTANT:
+    // Wait for the database history request after saving
+    // the new chat.
+    await refreshRecentChats();
+
+  } catch (error) {
+    console.error('Chat error:', error);
+
+    indicator.remove();
+
+    addMessage(
+      'I’m having trouble connecting. Please try again.',
+      'assistant'
+    );
+  }
+}
+
+
+// =========================
+// CHAT FORM
+// =========================
+
+if (chatForm) {
+  chatForm.addEventListener('submit', event => {
+    event.preventDefault();
+    sendMessage(input.value);
+  });
+}
+
+
+// =========================
+// QUICK PROMPTS
+// =========================
+
+document.querySelectorAll('[data-prompt]').forEach(button => {
+  button.addEventListener('click', () => {
+    sendMessage(button.dataset.prompt);
+  });
+});
+
+
+// =========================
+// TEXTAREA AUTO RESIZE
+// =========================
+
+if (input) {
+  input.addEventListener('input', () => {
     input.style.height = 'auto';
 
     input.style.height =
-        Math.min(input.scrollHeight, 120) + 'px';
-});
+      Math.min(input.scrollHeight, 120) + 'px';
+  });
 
 
-input.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
+  // =========================
+  // ENTER TO SEND
+  // =========================
+
+  input.addEventListener('keydown', event => {
+    if (
+      event.key === 'Enter' &&
+      !event.shiftKey
+    ) {
+      event.preventDefault();
+
+      if (chatForm) {
         chatForm.requestSubmit();
+      }
     }
+  });
+}
+
+
+// =========================
+// NEW CHAT
+// =========================
+
+const newChatButton = document.querySelector('#newChat');
+
+if (newChatButton) {
+  newChatButton.addEventListener('click', () => {
+    messages.innerHTML = '';
+
+    welcome.style.display = '';
+
+    input.value = '';
+    input.style.height = 'auto';
+
+    input.focus();
+  });
+}
+
+
+// =========================
+// FLASHCARDS
+// =========================
+
+const modal = document.querySelector('#flashcardModal');
+const flashcardButton = document.querySelector('#flashcardButton');
+const closeModal = document.querySelector('#closeModal');
+const flashcardForm = document.querySelector('#flashcardForm');
+
+if (flashcardButton && modal) {
+  flashcardButton.addEventListener('click', () => {
+    modal.showModal();
+  });
+}
+
+if (closeModal && modal) {
+  closeModal.addEventListener('click', () => {
+    modal.close();
+  });
+}
+
+if (flashcardForm) {
+  flashcardForm.addEventListener('submit', async event => {
+    event.preventDefault();
+
+    const topic =
+      document.querySelector('#flashcardTopic').value;
+
+    try {
+      const res = await fetch('/api/flashcards', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          topic
+        })
+      });
+
+      const data = await res.json();
+
+      document.querySelector('#cards').innerHTML =
+        (data.cards || [])
+          .map(card => `
+            <div class="flashcard">
+              <strong></strong>
+              <span></span>
+            </div>
+          `)
+          .join('');
+
+      const cards =
+        document.querySelectorAll('#cards .flashcard');
+
+      (data.cards || []).forEach((card, index) => {
+        cards[index].querySelector('strong').textContent =
+          card.front;
+
+        cards[index].querySelector('span').textContent =
+          card.back;
+      });
+
+    } catch (error) {
+      console.error('Flashcard error:', error);
+    }
+  });
+}
+
+
+// =========================
+// LOAD RECENT CHATS ON START
+// =========================
+
+document.addEventListener('DOMContentLoaded', () => {
+  refreshRecentChats();
 });
-
-
-document
-    .querySelector('#newChat')
-    .addEventListener('click', () => {
-        messages.innerHTML = '';
-        welcome.style.display = '';
-        input.focus();
-    });
-
-
-// =====================================================
-// Flashcards
-// =====================================================
-
-const modal =
-    document.querySelector('#flashcardModal');
-
-document
-    .querySelector('#flashcardButton')
-    .addEventListener('click', () => {
-        modal.showModal();
-    });
-
-
-document
-    .querySelector('#closeModal')
-    .addEventListener('click', () => {
-        modal.close();
-    });
-
-
-document
-    .querySelector('#flashcardForm')
-    .addEventListener('submit', async e => {
-        e.preventDefault();
-
-        const topic =
-            document.querySelector('#flashcardTopic').value;
-
-        const res = await fetch('/api/flashcards', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                topic
-            })
-        });
-
-        const data = await res.json();
-
-        document.querySelector('#cards').innerHTML =
-            data.cards
-                .map(card => `
-                    <div class="flashcard">
-                        <strong>${card.front}</strong>
-                        <span>${card.back}</span>
-                    </div>
-                `)
-                .join('');
-    });
