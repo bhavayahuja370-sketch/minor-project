@@ -439,8 +439,9 @@ html[data-theme="dark"] .moon-icon {
     flex: 1;
     overflow: auto;
     padding: 30px 48px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
 }
-
 
 .welcome,
 .messages {
