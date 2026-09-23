@@ -39,3 +39,9 @@ calling the other provider or showing a raw error.
 
 Never add your API key to the project files, commit it to source control, or expose it in
 frontend/browser code. Both keys are only ever read server-side from environment variables.
+
+## Deploy on Render
+
+Push this project to a Git repository, then create a new **Blueprint** service in Render and select the repository. Render reads `render.yaml`, installs the Python requirements, and starts the Flask app with Gunicorn.
+
+In Render, add `GEMINI_API_KEY` and/or `OPENAI_API_KEY` as environment variables. This version has no data-storage connection and no persistent chat history.
