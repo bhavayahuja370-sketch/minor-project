@@ -1,217 +1,69 @@
-// =========================
-// DARK MODE
-// =========================
-
+const chatForm = document.querySelector('#chatForm');
+const input = document.querySelector('#messageInput');
+const messages = document.querySelector('#messages');
+const welcome = document.querySelector('#welcome');
+const subject = document.querySelector('#subject');
+const level = document.querySelector('#level');
 const themeToggle = document.querySelector('#themeToggle');
+const modelSelect = document.querySelector('#modelSelect');
+
+// Remember the selected AI model for the current browser session only.
+modelSelect.value = sessionStorage.getItem('nova-model') || 'gemini';
+modelSelect.addEventListener('change', () => sessionStorage.setItem('nova-model', modelSelect.value));
 
 function setTheme(theme) {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('nova-theme', theme);
-
-    if (themeToggle) {
-        const dark = theme === 'dark';
-
-        themeToggle.setAttribute(
-            'aria-label',
-            `Switch to ${dark ? 'light' : 'dark'} mode`
-        );
-
-        themeToggle.title =
-            themeToggle.getAttribute('aria-label');
-    }
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem('nova-theme', theme);
+  const dark = theme === 'dark';
+  themeToggle.setAttribute('aria-label', `Switch to ${dark ? 'light' : 'dark'} mode`);
+  themeToggle.title = themeToggle.getAttribute('aria-label');
 }
 
-// Load saved theme
-const savedTheme = localStorage.getItem('nova-theme');
+setTheme(localStorage.getItem('nova-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+themeToggle.addEventListener('click', () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
 
-setTheme(
-    savedTheme ||
-    (
-        window.matchMedia('(prefers-color-scheme: dark)').matches
-            ? 'dark'
-            : 'light'
-    )
-);
-
-// Toggle button
-if (themeToggle) {
-    themeToggle.addEventListener('click', () => {
-        const currentTheme =
-            document.documentElement.getAttribute('data-theme');
-
-        setTheme(
-            currentTheme === 'dark'
-                ? 'light'
-                : 'dark'
-        );
-    });
+function addMessage(text, role, typing = false) {
+  const item = document.createElement('div');
+  item.className = `message ${role}${typing ? ' typing' : ''} message-enter`;
+  if (role === 'assistant') item.innerHTML = '<div class="bot-avatar">✦</div>';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = text;
+  item.appendChild(bubble);
+  messages.appendChild(item);
+  item.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  return item;
 }
 
-
-// =========================
-// RECENT CHATS
-// =========================
-
-const recentChatsButton =
-    document.querySelector('#recentChatsButton');
-
-const recentChatsPanel =
-    document.querySelector('#recentChatsPanel');
-
-const recentChatsList =
-    document.querySelector('#recentChatsList');
-
-const recentChatsEmpty =
-    document.querySelector('#recentChatsEmpty');
-
-function renderRecentChats(history) {
-    if (!recentChatsList) return;
-
-    recentChatsList.innerHTML = '';
-
-    if (!Array.isArray(history) || history.length === 0) {
-        if (recentChatsEmpty) {
-            recentChatsEmpty.style.display = 'block';
-        }
-        return;
-    }
-
-    if (recentChatsEmpty) {
-        recentChatsEmpty.style.display = 'none';
-    }
-
-    history.forEach(chat => {
-        const item = document.createElement('div');
-
-        item.className = 'recent-chat-item';
-
-        const title = document.createElement('div');
-
-        title.className = 'recent-chat-title';
-
-        title.textContent =
-            chat.user_message ||
-            'Untitled conversation';
-
-        const time = document.createElement('div');
-
-        time.className = 'recent-chat-time';
-
-        if (chat.created_at) {
-            time.textContent =
-                new Date(chat.created_at).toLocaleString();
-        }
-
-        item.appendChild(title);
-        item.appendChild(time);
-
-        item.addEventListener('click', () => {
-            messages.innerHTML = '';
-
-            welcome.style.display = 'none';
-
-            addMessage(
-                chat.user_message || '',
-                'user'
-            );
-
-            if (chat.assistant_response) {
-                addMessage(
-                    chat.assistant_response,
-                    'assistant'
-                );
-            }
-
-            if (recentChatsPanel) {
-                recentChatsPanel.classList.remove('open');
-            }
-        });
-
-        recentChatsList.appendChild(item);
-    });
+async function sendMessage(value) {
+  const text = value.trim();
+  if (!text) return;
+  welcome.style.display = 'none';
+  addMessage(text, 'user');
+  input.value = ''; input.style.height = 'auto';
+  const indicator = addMessage('Nova is thinking…', 'assistant', true);
+  try {
+    const res = await fetch('/api/chat', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({message: text, subject: subject.value, level: level.value, model: modelSelect.value})});
+    const data = await res.json();
+    indicator.remove();
+    addMessage(data.reply || data.error || 'I could not generate a response.', 'assistant');
+  } catch (_) {
+    indicator.remove(); addMessage('I’m having trouble connecting. Please try again.', 'assistant');
+  }
 }
 
+chatForm.addEventListener('submit', e => { e.preventDefault(); sendMessage(input.value); });
+document.querySelectorAll('[data-prompt]').forEach(button => button.addEventListener('click', () => sendMessage(button.dataset.prompt)));
+input.addEventListener('input', () => { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 120) + 'px'; });
+input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); chatForm.requestSubmit(); }});
+document.querySelector('#newChat').addEventListener('click', () => { messages.innerHTML = ''; welcome.style.display = ''; input.focus(); });
 
-async function refreshRecentChats() {
-    if (!recentChatsList) return;
-
-    try {
-        const response = await fetch(
-            '/api/chat-history',
-            {
-                method: 'GET',
-                cache: 'no-store',
-                headers: {
-                    'Accept': 'application/json'
-                }
-            }
-        );
-
-        if (!response.ok) {
-            throw new Error(
-                `History request failed: ${response.status}`
-            );
-        }
-
-        const data = await response.json();
-
-        console.log(
-            'Recent Chats:',
-            data
-        );
-
-        const history = Array.isArray(data)
-            ? data
-            : Array.isArray(data.history)
-                ? data.history
-                : [];
-
-        renderRecentChats(history);
-
-    } catch (error) {
-        console.error(
-            'Failed to load recent chats:',
-            error
-        );
-
-        renderRecentChats([]);
-    }
-}
-
-
-// =========================
-// OPEN / CLOSE RECENT CHATS
-// =========================
-
-if (recentChatsButton) {
-    recentChatsButton.addEventListener(
-        'click',
-        async () => {
-
-            if (recentChatsPanel) {
-                recentChatsPanel.classList.toggle('open');
-
-                if (
-                    recentChatsPanel.classList.contains('open')
-                ) {
-                    await refreshRecentChats();
-                }
-
-            } else {
-                await refreshRecentChats();
-            }
-        }
-    );
-}
-
-
-// =========================
-// LOAD RECENT CHATS ON PAGE LOAD
-// =========================
-
-document.addEventListener(
-    'DOMContentLoaded',
-    () => {
-        refreshRecentChats();
-    }
-);
+const modal = document.querySelector('#flashcardModal');
+document.querySelector('#flashcardButton').addEventListener('click', () => modal.showModal());
+document.querySelector('#closeModal').addEventListener('click', () => modal.close());
+document.querySelector('#flashcardForm').addEventListener('submit', async e => {
+  e.preventDefault(); const topic = document.querySelector('#flashcardTopic').value;
+  const res = await fetch('/api/flashcards', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({topic})});
+  const data = await res.json();
+  document.querySelector('#cards').innerHTML = data.cards.map(card => `<div class="flashcard"><strong>${card.front}</strong><span>${card.back}</span></div>`).join('');
+});
