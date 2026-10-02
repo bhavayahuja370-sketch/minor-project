@@ -201,71 +201,6 @@ def gemini_response(message: str, subject: str, level: str, local_knowledge: str
     return None
 
 
-def openai_is_configured() -> bool:
-    """Return whether an OpenAI key is available without exposing its value."""
-    return bool(os.getenv("OPENAI_API_KEY", "").strip())
-
-
-def openai_response(message: str, subject: str, level: str, local_knowledge: str) -> str | None:
-    """Calls OpenAI using the same student-assistant framing as the Gemini provider."""
-    key = os.getenv("OPENAI_API_KEY")
-    if not key:
-        return None
-    try:
-        from openai import OpenAI
-
-        client = OpenAI(api_key=key)
-        completion = client.chat.completions.create(
-            model=os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are Nova, a clear and encouraging student assistant. "
-                        f"Adapt your answer for a {level} learner. Explain {subject} concepts using short "
-                        "paragraphs or bullets, include a simple example when useful, and do not complete "
-                        "graded work. When app study notes are supplied, use them as a factual starting "
-                        "point and add useful detail without repeating them word-for-word."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        f"Student question: {message}\n\n"
-                        f"App study notes:\n{local_knowledge or 'No local study notes are available for this topic.'}"
-                    ),
-                },
-            ],
-        )
-        answer = (completion.choices[0].message.content or "").strip()
-        if answer:
-            app.logger.info("OpenAI response received successfully.")
-            return answer
-        app.logger.warning("OpenAI returned an empty response.")
-    except Exception as error:
-        # Log only the error type; never log an API key or request credentials.
-        app.logger.warning("OpenAI request failed: %s", type(error).__name__)
-        return None
-
-    return None
-
-
-# Registry of selectable AI providers. Adding a provider here (and its
-# `*_response` function above) is the only place new models need to be wired in.
-AI_PROVIDERS = {
-    "gemini": gemini_response,
-    "openai": openai_response,
-}
-DEFAULT_MODEL = "gemini"
-
-
-def ai_response(model: str, message: str, subject: str, level: str, local_knowledge: str) -> str | None:
-    """Calls ONLY the selected provider. Never falls through to the other AI provider —
-    on failure the caller is expected to fall back to local data instead."""
-    handler = AI_PROVIDERS.get(model, AI_PROVIDERS[DEFAULT_MODEL])
-    return handler(message, subject, level, local_knowledge)
-
-
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -277,12 +212,6 @@ def chat():
     message = str(data.get("message", "")).strip()
     subject = str(data.get("subject", "General"))
     level = str(data.get("level", "High school"))
-
-    # Model selection: use whatever the client sent if valid, otherwise fall back to
-    # whichever model this session last used (persists for the session), defaulting to Gemini.
-    requested_model = str(data.get("model", "")).strip().lower()
-    model = requested_model if requested_model in AI_PROVIDERS else session.get("selected_model", DEFAULT_MODEL)
-    session["selected_model"] = model
 
     if not message:
         return jsonify({"error": "Please enter a question."}), 400
@@ -299,26 +228,25 @@ def chat():
             answer = f"✗ Wrong. The correct answer is {correct}.\n\n{active_quiz['explanation']}"
     else:
         lower_message = message.lower()
-        supported_topics = ("python", "dbms", "database management", "html", "css", "java", "javascript", "sql")
+        supported_topics = ("python", "dbms", "database management", "html", "css", "java", "javascript", "sql", "database", "programming", "web development")
         is_quiz_request = any(word in lower_message for word in ("quiz", "test me", "quick quiz", "questions"))
         is_sql_question = bool(re.search(r"\bsql\b", lower_message))
 
-        # SQL has no local knowledge base entry, so the selected AI model is tried first;
+        # SQL has no local knowledge base entry, so Gemini is tried first;
         # if it fails there is no local answer to fall back to for this topic.
         if is_sql_question and not is_quiz_request:
-            ai_answer = ai_response(model, message, subject, level, "")
+            ai_answer = gemini_response(message, subject, level, "")
             answer = ai_answer or "Sorry, I couldn't find a reliable answer to that question right now."
-        # Selected AI model is the primary source for technical topics; local study notes are
-        # only used as a fallback if the AI call fails. The two are never shown together.
+        # Gemini is the primary source for technical topics; local study notes are only used
+        # as a fallback if the AI call fails. The two are never shown together.
         elif any(topic in lower_message for topic in supported_topics) and not is_quiz_request:
             local_answer = demo_response(message, subject, level)
-            ai_answer = ai_response(model, message, subject, level, local_answer)
+            ai_answer = gemini_response(message, subject, level, local_answer)
             answer = ai_answer if ai_answer else local_answer
         else:
-            # Greetings, quiz generation, and study-plan requests stay fully local — unaffected
-            # by model selection, exactly as before.
+            # Greetings, quiz generation, and study-plan requests stay fully local.
             answer = demo_response(message, subject, level)
-    return jsonify({"reply": answer, "time": datetime.now().strftime("%I:%M %p"), "model": model})
+    return jsonify({"reply": answer, "time": datetime.now().strftime("%I:%M %p")})
 
 
 @app.route("/api/flashcards", methods=["POST"])
@@ -336,5 +264,4 @@ def flashcards():
 
 if __name__ == "__main__":
     print(f"Gemini API key configured: {gemini_is_configured()}")
-    print(f"OpenAI API key configured: {openai_is_configured()}")
     app.run(debug=True)
