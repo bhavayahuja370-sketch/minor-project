@@ -26,7 +26,7 @@
     <section class="workspace">
       <header>
         <div><p class="eyebrow">PERSONAL LEARNING COMPANION</p><h1>Good afternoon, Alex.</h1></div>
-        <div class="header-controls"><button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch to dark mode" title="Switch theme"><span class="sun-icon">☼</span><span class="moon-icon">☾</span></button><label>AI Model <select id="modelSelect"><option value="gemini">Gemini</option><option value="openai">OpenAI</option></select></label><label>Subject <select id="subject"><option>General</option><option>Mathematics</option><option>Science</option><option>History</option><option>English</option><option>Computer Science</option><option>SQL</option></select></label><label>Level <select id="level"><option>High school</option><option>Middle school</option><option>College</option></select></label></div>
+        <div class="header-controls"><button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch to dark mode" title="Switch theme"><span class="sun-icon">☼</span><span class="moon-icon">☾</span></button><label>Subject <select id="subject"><option>General</option><option>Mathematics</option><option>Science</option><option>History</option><option>English</option><option>Computer Science</option><option>SQL</option></select></label><label>Level <select id="level"><option>High school</option><option>Middle school</option><option>College</option></select></label></div>
       </header>
       <div class="chat-area" id="chatArea">
         <div class="welcome" id="welcome">
@@ -61,6 +61,8 @@
     </section>
   </main>
   <dialog id="flashcardModal"><button class="close" id="closeModal">×</button><p class="eyebrow">QUICK REVIEW</p><h2>Make flashcards</h2><p>Enter a topic and get three prompts to practise active recall.</p><form id="flashcardForm"><input id="flashcardTopic" placeholder="e.g. Newton's laws" required><button>Create cards</button></form><div id="cards"></div></dialog>
+  <footer class="puter-credit">Text-to-speech powered by <a href="https://developer.puter.com" target="_blank" rel="noopener noreferrer">Puter</a></footer>
+  <script src="https://js.puter.com/v2/"></script>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>
