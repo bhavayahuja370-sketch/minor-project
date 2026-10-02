@@ -5,11 +5,8 @@ const welcome = document.querySelector('#welcome');
 const subject = document.querySelector('#subject');
 const level = document.querySelector('#level');
 const themeToggle = document.querySelector('#themeToggle');
-const modelSelect = document.querySelector('#modelSelect');
-
-// Remember the selected AI model for the current browser session only.
-modelSelect.value = sessionStorage.getItem('nova-model') || 'gemini';
-modelSelect.addEventListener('change', () => sessionStorage.setItem('nova-model', modelSelect.value));
+let activeAudio = null;
+let activeSpeakButton = null;
 
 function setTheme(theme) {
   document.documentElement.dataset.theme = theme;
@@ -30,9 +27,70 @@ function addMessage(text, role, typing = false) {
   bubble.className = 'bubble';
   bubble.textContent = text;
   item.appendChild(bubble);
+  if (role === 'assistant' && !typing && text) {
+    const speakButton = document.createElement('button');
+    speakButton.className = 'speak-button';
+    speakButton.type = 'button';
+    speakButton.textContent = '🔊 Speak';
+    speakButton.setAttribute('aria-label', 'Speak Nova’s answer');
+    speakButton.addEventListener('click', () => speakReply(text, speakButton));
+    item.appendChild(speakButton);
+  }
   messages.appendChild(item);
   item.scrollIntoView({ behavior: 'smooth', block: 'end' });
   return item;
+}
+
+function resetSpeechControls() {
+  if (activeAudio) {
+    activeAudio.pause();
+    activeAudio.currentTime = 0;
+  }
+  if (activeSpeakButton) {
+    activeSpeakButton.textContent = '🔊 Speak';
+    activeSpeakButton.setAttribute('aria-label', 'Speak Nova’s answer');
+  }
+  activeAudio = null;
+  activeSpeakButton = null;
+}
+
+async function speakReply(text, button) {
+  if (activeSpeakButton === button) {
+    resetSpeechControls();
+    return;
+  }
+
+  resetSpeechControls();
+  button.textContent = 'Preparing…';
+  button.disabled = true;
+
+  try {
+    if (!window.puter?.ai?.txt2speech) {
+      throw new Error('Text-to-speech is unavailable. Check your internet connection and try again.');
+    }
+
+    const audio = await window.puter.ai.txt2speech(text.slice(0, 3000), {
+      provider: 'aws-polly',
+      voice: 'Joanna',
+      engine: 'neural',
+      language: 'en-US'
+    });
+
+    activeAudio = audio;
+    activeSpeakButton = button;
+    button.textContent = '■ Stop';
+    button.setAttribute('aria-label', 'Stop speaking Nova’s answer');
+    audio.addEventListener('ended', resetSpeechControls, { once: true });
+    await audio.play();
+  } catch (error) {
+    console.error('Text-to-speech failed:', error);
+    button.textContent = 'Speech unavailable';
+    window.setTimeout(() => {
+      if (button !== activeSpeakButton) button.textContent = '🔊 Speak';
+    }, 2200);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function sendMessage(value) {
@@ -43,7 +101,7 @@ async function sendMessage(value) {
   input.value = ''; input.style.height = 'auto';
   const indicator = addMessage('Nova is thinking…', 'assistant', true);
   try {
-    const res = await fetch('/api/chat', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({message: text, subject: subject.value, level: level.value, model: modelSelect.value})});
+    const res = await fetch('/api/chat', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({message: text, subject: subject.value, level: level.value})});
     const data = await res.json();
     indicator.remove();
     addMessage(data.reply || data.error || 'I could not generate a response.', 'assistant');
