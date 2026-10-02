@@ -773,6 +773,42 @@ html[data-theme="dark"] .moon-icon {
     font-size: 10px;
 }
 
+.speak-button {
+    align-self: flex-end;
+    margin: -4px 0 0 40px;
+    padding: 5px 9px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--muted);
+    font: 600 11px inherit;
+    cursor: pointer;
+    transition: transform .2s ease, border-color .2s ease, color .2s ease;
+}
+
+.speak-button:hover:not(:disabled) {
+    transform: translateY(-2px);
+    border-color: var(--accent);
+    color: var(--ink);
+}
+
+.speak-button:disabled {
+    cursor: wait;
+    opacity: .72;
+}
+
+.puter-credit {
+    padding: 0 47px 15px;
+    background: var(--paper);
+    color: var(--muted);
+    text-align: center;
+    font-size: 10px;
+}
+
+.puter-credit a {
+    color: inherit;
+}
+
 /* =========================
    DIALOG
 ========================= */
@@ -1087,6 +1123,10 @@ dialog form button:hover {
 
     .composer-wrap {
         padding: 0 20px 17px;
+    }
+
+    .puter-credit {
+        padding: 0 20px 12px;
     }
 
     .welcome {
