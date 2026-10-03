@@ -228,7 +228,7 @@ def chat():
             answer = f"✗ Wrong. The correct answer is {correct}.\n\n{active_quiz['explanation']}"
     else:
         lower_message = message.lower()
-        supported_topics = ("python", "dbms", "database management", "html", "css", "java", "javascript", "sql", "database", "programming", "web development")
+        supported_topics = ("python", "dbms", "database management", "html", "css", "java", "javascript", "sql", "structured query language", "programming", "web development", "frontend", "backend", "full stack", "object-oriented", "oop", "data structures", "algorithms", "api", "rest api", "http", "https", "json", "xml", "sql injection", "database design", "normalization", "denormalization", "indexing", "joins", "subqueries", "transactions", "concurrency", "locking", "caching", "performance tuning", "security", "authentication", "authorization", "encryption", "hashing", "data integrity", "data modeling", "uml diagrams", "class diagrams", "sequence diagrams")
         is_quiz_request = any(word in lower_message for word in ("quiz", "test me", "quick quiz", "questions"))
         is_sql_question = bool(re.search(r"\bsql\b", lower_message))
 
