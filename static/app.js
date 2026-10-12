@@ -106,11 +106,13 @@ async function sendMessage(value) {
   const indicator = addMessage('Nova is thinking…', 'assistant', true);
   try {
     const res = await fetch('/api/chat', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({message: text, subject: subject.value, level: level.value})});
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'The server could not answer this question.');
     indicator.remove();
     addMessage(data.reply || data.error || 'I could not generate a response.', 'assistant');
-  } catch (_) {
-    indicator.remove(); addMessage('I’m having trouble connecting. Please try again.', 'assistant');
+  } catch (error) {
+    indicator.remove();
+    addMessage(error.message || 'I’m having trouble connecting. Please try again.', 'assistant');
   }
 }
 
