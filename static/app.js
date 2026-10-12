@@ -5,8 +5,12 @@ const welcome = document.querySelector('#welcome');
 const subject = document.querySelector('#subject');
 const level = document.querySelector('#level');
 const themeToggle = document.querySelector('#themeToggle');
+const voiceButton = document.querySelector('#voiceButton');
 let activeAudio = null;
 let activeSpeakButton = null;
+let mediaRecorder = null;
+let microphoneStream = null;
+let recordingChunks = [];
 
 function setTheme(theme) {
   document.documentElement.dataset.theme = theme;
@@ -110,7 +114,85 @@ async function sendMessage(value) {
   }
 }
 
+function updateVoiceButton(state) {
+  const labels = {
+    ready: ['🎙', 'Start voice input'],
+    recording: ['■', 'Stop recording'],
+    working: ['…', 'Turning voice into text']
+  };
+  const [icon, label] = labels[state];
+  voiceButton.textContent = icon;
+  voiceButton.setAttribute('aria-label', label);
+  voiceButton.title = label;
+  voiceButton.classList.toggle('recording', state === 'recording');
+  voiceButton.disabled = state === 'working';
+}
+
+function stopMicrophone() {
+  microphoneStream?.getTracks().forEach(track => track.stop());
+  microphoneStream = null;
+}
+
+async function transcribeRecording() {
+  updateVoiceButton('working');
+  const type = mediaRecorder?.mimeType || 'audio/webm';
+  const recording = new Blob(recordingChunks, { type });
+  recordingChunks = [];
+
+  try {
+    const formData = new FormData();
+    formData.append('audio', recording, 'nova-recording.webm');
+    const response = await fetch('/api/transcribe', { method: 'POST', body: formData });
+    const data = await response.json();
+    if (!response.ok || !data.transcript) throw new Error(data.error || 'Voice input failed.');
+
+    input.value = data.transcript;
+    input.dispatchEvent(new Event('input'));
+    chatForm.requestSubmit();
+  } catch (error) {
+    console.error('Speech-to-text failed:', error);
+    addMessage(error.message || 'I could not turn that recording into text. Please try again.', 'assistant');
+  } finally {
+    mediaRecorder = null;
+    updateVoiceButton('ready');
+  }
+}
+
+async function toggleVoiceInput() {
+  if (mediaRecorder?.state === 'recording') {
+    mediaRecorder.stop();
+    return;
+  }
+
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+    addMessage('Voice input is not supported by this browser. Please use a recent Chrome, Edge, or Firefox browser.', 'assistant');
+    return;
+  }
+
+  try {
+    microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : '';
+    mediaRecorder = new MediaRecorder(microphoneStream, mimeType ? { mimeType } : undefined);
+    recordingChunks = [];
+    mediaRecorder.addEventListener('dataavailable', event => {
+      if (event.data.size) recordingChunks.push(event.data);
+    });
+    mediaRecorder.addEventListener('stop', () => {
+      stopMicrophone();
+      transcribeRecording();
+    }, { once: true });
+    mediaRecorder.start();
+    updateVoiceButton('recording');
+  } catch (error) {
+    console.error('Microphone access failed:', error);
+    stopMicrophone();
+    updateVoiceButton('ready');
+    addMessage('Please allow microphone permission in your browser, then try voice input again.', 'assistant');
+  }
+}
+
 chatForm.addEventListener('submit', e => { e.preventDefault(); sendMessage(input.value); });
+voiceButton.addEventListener('click', toggleVoiceInput);
 document.querySelectorAll('[data-prompt]').forEach(button => button.addEventListener('click', () => sendMessage(button.dataset.prompt)));
 input.addEventListener('input', () => { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 120) + 'px'; });
 input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); chatForm.requestSubmit(); }});
