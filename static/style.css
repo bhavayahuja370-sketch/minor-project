@@ -70,6 +70,37 @@ button,
     -webkit-tap-highlight-color: transparent;
 }
 
+.voice-input {
+    width: 35px;
+    height: 35px;
+    margin-right: 6px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--soft);
+    color: var(--ink);
+    font-size: 16px;
+    cursor: pointer;
+    transition: transform .2s ease, background .2s ease, color .2s ease;
+}
+
+.voice-input:hover:not(:disabled) {
+    transform: translateY(-2px);
+    background: var(--accent);
+    color: white;
+}
+
+.voice-input.recording {
+    background: #c94747;
+    border-color: #c94747;
+    color: white;
+    animation: softBlink 1s ease-in-out infinite;
+}
+
+.voice-input:disabled {
+    cursor: wait;
+    opacity: .7;
+}
+
 button:focus-visible,
 select:focus-visible,
 input:focus-visible,
