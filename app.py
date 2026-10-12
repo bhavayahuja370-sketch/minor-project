@@ -11,17 +11,6 @@ load_dotenv()
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY", "nova-local-development-key")
 
-api_key = (
-    os.getenv("GEMINI_API_KEY")
-    or os.getenv("GOOGLE_API_KEY")
-)
-
-key = os.getenv("GEMINI_API_KEY")
-
-print("Gemini key loaded:", bool(key))
-print("Gemini key prefix:", key[:6] if key else "MISSING")
-print("Gemini key length:", len(key) if key else 0)
-
 QUIZ_QUESTIONS = [
     {
         "topic": "Python",
@@ -188,34 +177,42 @@ def sarvam_is_configured() -> bool:
 
 def gemini_response(message: str, subject: str, level: str, local_knowledge: str) -> str | None:
     """Adds a Gemini explanation to the app's built-in technical knowledge."""
-    key = os.getenv("GEMINI_API_KEY")
+    key = os.getenv("GEMINI_API_KEY", "").strip()
     if not key:
+        app.logger.warning("Gemini is not configured on this server.")
         return None
+
+    prompt = (
+        "You are Nova, a clear and encouraging student assistant. "
+        f"Adapt your answer for a {level} learner. Explain {subject} concepts using short "
+        "paragraphs or bullets, include a simple example when useful, and do not complete graded work. "
+        "When app study notes are supplied, use them as a factual starting point and add useful detail "
+        "without repeating them word-for-word.\n\n"
+        f"Student question: {message}\n\n"
+        f"App study notes:\n{local_knowledge or 'No local study notes are available for this topic.'}"
+    )
+    models = []
+    for model in (os.getenv("GEMINI_MODEL", "").strip(), "gemini-2.5-flash", "gemini-2.0-flash"):
+        if model and model not in models:
+            models.append(model)
+
     try:
         from google import genai
 
         client = genai.Client(api_key=key)
-        response = client.interactions.create(
-            model=os.environ.get("GEMINI_MODEL", "gemini-3.5-flash"),
-            input=(
-                "You are Nova, a clear and encouraging student assistant. "
-                f"Adapt your answer for a {level} learner. Explain {subject} concepts using short "
-                "paragraphs or bullets, include a simple example when useful, and do not complete graded work. "
-                "When app study notes are supplied, use them as a factual starting point and add useful detail "
-                "without repeating them word-for-word.\n\n"
-                f"Student question: {message}\n\n"
-                f"App study notes:\n{local_knowledge or 'No local study notes are available for this topic.'}"
-            ),
-        )
-        answer = (response.output_text or "").strip()
-        if answer:
-            app.logger.info("Gemini response received successfully.")
-            return answer
-        app.logger.warning("Gemini returned an empty response.")
+        for model in models:
+            try:
+                response = client.models.generate_content(model=model, contents=prompt)
+                answer = (getattr(response, "text", "") or "").strip()
+                if answer:
+                    app.logger.info("Gemini response received successfully using %s.", model)
+                    return answer
+                app.logger.warning("Gemini returned an empty response using %s.", model)
+            except Exception as error:
+                # Log only the model name and error type; never log an API key.
+                app.logger.warning("Gemini request failed for %s: %s", model, type(error).__name__)
     except Exception as error:
-        # Log only the error type; never log an API key or request credentials.
-        app.logger.warning("Gemini request failed: %s", type(error).__name__)
-        return None
+        app.logger.warning("Gemini client could not start: %s", type(error).__name__)
 
     return None
 
@@ -247,7 +244,8 @@ def chat():
             answer = f"✗ Wrong. The correct answer is {correct}.\n\n{active_quiz['explanation']}"
     else:
         lower_message = message.lower()
-        supported_topics = ("python", "dbms", "database management", "html", "css", "java", "javascript", "sql", "programming", "web development", "database", "frontend","front end", "backend","back end", "full stack", "object-oriented", "oop", "data structures", "algorithms", "api", "rest", "json", "xml", "http", "https", "server", "client", "framework", "library", "version control", "git", "github", "bitbucket", "docker", "kubernetes", "cloud computing", "aws", "azure", "gcp", "machine learning", "artificial intelligence", "ai", "deep learning", "neural networks", "data science", "big data", "sql injection", "database normalization", "database schema", "database query", "database index", "database transaction", "database backup", "database restore", "database replication", "database clustering", "database sharding", "database partitioning", "database optimization", "database performance tuning", "database security", "database auditing", "database monitoring", "database logging", "database alerting", "database troubleshooting", "database maintenance", "database upgrade", "database migration", "database conversion", "database integration", "database testing", "database validation", "database verification", "database compliance", "database governance", "database policy", "database procedure", "database standard", "database best practice", "database guideline", "database recommendation", "database suggestion", "database advice", "database tip", "database trick", "database hack", "database shortcut", "database technique", "database method", "database approach", "database strategy", "database plan", "database roadmap", "database vision", "database mission", "database goal", "database objective", "database target", "database milestone", "database deliverable", "database outcome", "database result","sql query", "sql command", "sql statement", "sql function", "sql procedure", "sql trigger", "sql view", "sql index", "sql table", "sql column", "sql row", "sql data type", "sql constraint", "sql primary key", "sql foreign key", "sql unique key", "sql check constraint", "sql default value", "sql auto increment", "sql sequence", "sql cursor", "sql transaction control", "sql commit", "sql rollback", "sql savepoint", "sql isolation level", "sql deadlock", "sql lock", "sql concurrency", "sql performance", "sql optimization", "sql tuning", "sql explain plan", "sql query plan", "sql execution plan", "sql query optimization", "sql query tuning", "sql query performance", "sql query analysis", "sql query debugging", "sql query profiling", "sql query monitoring", "sql query logging", "sql query auditing", "sql query validation", "sql query verification", "sql query testing", "sql query benchmarking", "sql query comparison", "sql query evaluation", "sql query review", "sql query assessment", "sql query recommendation", "sql query suggestion", "sql query advice", "sql query tip", "sql query trick", "sql query hack", "sql query shortcut", "sql query technique", "sql query method", "sql query approach", "sql query strategy", "sql query plan", "sql query roadmap", "sql query vision", "sql query mission", "sql query goal", "sql query objective", "sql query target", "sql query milestone", "sql query deliverable", "sql query outcome", "sql query result","math", "mathematics", "algebra", "geometry", "trigonometry", "calculus", "statistics", "probability", "linear algebra", "discrete mathematics", "number theory", "combinatorics", "graph theory", "set theory", "logic", "proofs", "theorems", "lemmas", "corollaries", "axioms", "postulates", "definitions", "examples", "exercises", "problems", "solutions","physics","mechanics","thermodynamics","optics","electromagnetism","quantum mechanics","relativity","nuclear physics","particle physics","astrophysics","cosmology","fluid dynamics","statistical mechanics","solid state physics","condensed matter physics","plasma physics","biophysics","geophysics","medical physics","computational physics","experimental physics","theoretical physics","physics lab","physics experiment","physics simulation","physics modeling","physics analysis","physics measurement","physics instrumentation","physics data analysis","physics signal processing","physics image processing","physics visualization","physics software","physics programming","physics coding","physics algorithm","physics optimization","physics numerical methods","physics finite element analysis","physics computational fluid dynamics","physics molecular dynamics","physics Monte Carlo simulation","physics machine learning","physics artificial intelligence","physics deep learning","physics neural networks","spanish basic words to speak ",) and not any(word in lower_message for word in ("explain simply", "step by step", "help me understand",))
+        supported_topics = ("python", "dbms", "database management", "html", "css", "java", "javascript", "sql", "programming", "web development", "database", "frontend","front end", "backend","back end", "full stack", "object-oriented", "oop", "data structures", "algorithms", "api", "rest", "json", "xml", "http", "https", "server", "client", "framework", "library", "version control", "git", "github", "bitbucket", "docker", "kubernetes", "cloud computing", "aws", "azure", "gcp", "machine learning", "artificial intelligence", "ai", "deep learning", "neural networks", "data science", "big data", "sql injection", "database normalization", "database schema", "database query", "database index", "database transaction", "database backup", "database restore", "database replication", "database clustering", "database sharding", "database partitioning", "database optimization", "database performance tuning", "database security", "database auditing", "database monitoring", "database logging", "database alerting", "database troubleshooting", "database maintenance", "database upgrade", "database migration", "database conversion", "database integration", "database testing", "database validation", "database verification", "database compliance", "database governance", "database policy", "database procedure", "database standard", "database best practice", "database guideline", "database recommendation", "database suggestion", "database advice", "database tip", "database trick", "database hack", "database shortcut", "database technique", "database method", "database approach", "database strategy", "database plan", "database roadmap", "database vision", "database mission", "database goal", "database objective", "database target", "database milestone", "database deliverable", "database outcome", "database result","sql query", "sql command", "sql statement", "sql function", "sql procedure", "sql trigger", "sql view", "sql index", "sql table", "sql column", "sql row", "sql data type", "sql constraint", "sql primary key", "sql foreign key", "sql unique key", "sql check constraint", "sql default value", "sql auto increment", "sql sequence", "sql cursor", "sql transaction control", "sql commit", "sql rollback", "sql savepoint", "sql isolation level", "sql deadlock", "sql lock", "sql concurrency", "sql performance", "sql optimization", "sql tuning", "sql explain plan", "sql query plan", "sql execution plan", "sql query optimization", "sql query tuning", "sql query performance", "sql query analysis", "sql query debugging", "sql query profiling", "sql query monitoring", "sql query logging", "sql query auditing", "sql query validation", "sql query verification", "sql query testing", "sql query benchmarking", "sql query comparison", "sql query evaluation", "sql query review", "sql query assessment", "sql query recommendation", "sql query suggestion", "sql query advice", "sql query tip", "sql query trick", "sql query hack", "sql query shortcut", "sql query technique", "sql query method", "sql query approach", "sql query strategy", "sql query plan", "sql query roadmap", "sql query vision", "sql query mission", "sql query goal", "sql query objective", "sql query target", "sql query milestone", "sql query deliverable", "sql query outcome", "sql query result","math", "mathematics", "algebra", "geometry", "trigonometry", "calculus", "statistics", "probability", "linear algebra", "discrete mathematics", "number theory", "combinatorics", "graph theory", "set theory", "logic", "proofs", "theorems", "lemmas", "corollaries", "axioms", "postulates", "definitions", "examples", "exercises", "problems", "solutions","physics","mechanics","thermodynamics","optics","electromagnetism","quantum mechanics","relativity","nuclear physics","particle physics","astrophysics","cosmology","fluid dynamics","statistical mechanics","solid state physics","condensed matter physics","plasma physics","biophysics","geophysics","medical physics","computational physics","experimental physics","theoretical physics","physics lab","physics experiment","physics simulation","physics modeling","physics analysis","physics measurement","physics instrumentation","physics data analysis","physics signal processing","physics image processing","physics visualization","physics software","physics programming","physics coding","physics algorithm","physics optimization","physics numerical methods","physics finite element analysis","physics computational fluid dynamics","physics molecular dynamics","physics Monte Carlo simulation","physics machine learning","physics artificial intelligence","physics deep learning","physics neural networks","spanish basic words to speak ",)
+        is_simple_explanation_request = any(word in lower_message for word in ("explain simply", "step by step", "help me understand"))
         is_quiz_request = any(word in lower_message for word in ("quiz", "test me", "quick quiz", "questions", "flashcards", "study plan", "study-plan", "studyplan", "study schedule", "study-schedule", "studyschedule", "study guide", "study-guide", "studyguide", "study notes", "study-notes", "studynotes", "study material", "study-material", "studymaterial", "study resources", "study-resources", "studyresources", "study help", "study-help", "studyhelp", "study tips", "study-tips", "studytips", "study tricks", "study-tricks", "studytricks", "study hacks", "study-hacks", "studyhacks", "study shortcuts", "study-shortcuts", "studyshortcuts", "study techniques", "study-techniques", "studytechniques", "study methods", "study-methods", "studymethods", "study approaches", "study-approaches", "studyapproaches", "study strategies", "study-strategies", "studystrategies","job plans", "job-plans", "jobplans", "career plans", "career-plans", "careerplans", "learning plans", "learning-plans", "learningplans", "training plans", "training-plans", "trainingplans")) and not any(word in lower_message for word in ("explain simply", "step by step", "help me understand",))
         is_sql_question = bool(re.search(r"\bsql\b", lower_message))
 
@@ -258,7 +256,7 @@ def chat():
             answer = ai_answer or "Sorry, I couldn't find a reliable answer to that question right now."
         # Gemini is the primary source for technical topics; local study notes are only used
         # as a fallback if the AI call fails. The two are never shown together.
-        elif any(topic in lower_message for topic in supported_topics) and not is_quiz_request:
+        elif any(topic in lower_message for topic in supported_topics) and not is_quiz_request and not is_simple_explanation_request:
             local_answer = demo_response(message, subject, level)
             ai_answer = gemini_response(message, subject, level, local_answer)
             answer = ai_answer if ai_answer else local_answer
