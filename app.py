@@ -3,7 +3,10 @@ import re
 import random
 from datetime import datetime
 
+from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request, session
+
+load_dotenv()
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY", "nova-local-development-key")
@@ -167,6 +170,11 @@ def gemini_is_configured() -> bool:
     return bool(os.getenv("GEMINI_API_KEY", "").strip())
 
 
+def sarvam_is_configured() -> bool:
+    """Return whether a Sarvam key is available without exposing its value."""
+    return bool(os.getenv("SARVAM_API_KEY", "").strip())
+
+
 def gemini_response(message: str, subject: str, level: str, local_knowledge: str) -> str | None:
     """Adds a Gemini explanation to the app's built-in technical knowledge."""
     key = os.getenv("GEMINI_API_KEY")
@@ -228,8 +236,8 @@ def chat():
             answer = f"✗ Wrong. The correct answer is {correct}.\n\n{active_quiz['explanation']}"
     else:
         lower_message = message.lower()
-        supported_topics = ("python", "dbms", "database management", "html", "css", "java", "javascript", "sql", "structured query language", "programming", "web development", "frontend", "backend", "full stack", "object-oriented", "oop", "data structures", "algorithms", "api", "rest api", "http", "https", "json", "xml", "sql injection", "database design", "normalization", "denormalization", "indexing", "joins", "subqueries", "transactions", "concurrency", "locking", "caching", "performance tuning", "security", "authentication", "authorization", "encryption", "hashing", "data integrity", "data modeling", "uml diagrams", "class diagrams", "sequence diagrams")
-        is_quiz_request = any(word in lower_message for word in ("quiz", "test me", "quick quiz", "questions"))
+        supported_topics = ("python", "dbms", "database management", "html", "css", "java", "javascript", "sql", "programming", "web development", "database", "frontend","front end", "backend","back end", "full stack", "object-oriented", "oop", "data structures", "algorithms", "api", "rest", "json", "xml", "http", "https", "server", "client", "framework", "library", "version control", "git", "github", "bitbucket", "docker", "kubernetes", "cloud computing", "aws", "azure", "gcp", "machine learning", "artificial intelligence", "ai", "deep learning", "neural networks", "data science", "big data", "sql injection", "database normalization", "database schema", "database query", "database index", "database transaction", "database backup", "database restore", "database replication", "database clustering", "database sharding", "database partitioning", "database optimization", "database performance tuning", "database security", "database auditing", "database monitoring", "database logging", "database alerting", "database troubleshooting", "database maintenance", "database upgrade", "database migration", "database conversion", "database integration", "database testing", "database validation", "database verification", "database compliance", "database governance", "database policy", "database procedure", "database standard", "database best practice", "database guideline", "database recommendation", "database suggestion", "database advice", "database tip", "database trick", "database hack", "database shortcut", "database technique", "database method", "database approach", "database strategy", "database plan", "database roadmap", "database vision", "database mission", "database goal", "database objective", "database target", "database milestone", "database deliverable", "database outcome", "database result","sql query", "sql command", "sql statement", "sql function", "sql procedure", "sql trigger", "sql view", "sql index", "sql table", "sql column", "sql row", "sql data type", "sql constraint", "sql primary key", "sql foreign key", "sql unique key", "sql check constraint", "sql default value", "sql auto increment", "sql sequence", "sql cursor", "sql transaction control", "sql commit", "sql rollback", "sql savepoint", "sql isolation level", "sql deadlock", "sql lock", "sql concurrency", "sql performance", "sql optimization", "sql tuning", "sql explain plan", "sql query plan", "sql execution plan", "sql query optimization", "sql query tuning", "sql query performance", "sql query analysis", "sql query debugging", "sql query profiling", "sql query monitoring", "sql query logging", "sql query auditing", "sql query validation", "sql query verification", "sql query testing", "sql query benchmarking", "sql query comparison", "sql query evaluation", "sql query review", "sql query assessment", "sql query recommendation", "sql query suggestion", "sql query advice", "sql query tip", "sql query trick", "sql query hack", "sql query shortcut", "sql query technique", "sql query method", "sql query approach", "sql query strategy", "sql query plan", "sql query roadmap", "sql query vision", "sql query mission", "sql query goal", "sql query objective", "sql query target", "sql query milestone", "sql query deliverable", "sql query outcome", "sql query result","math", "mathematics", "algebra", "geometry", "trigonometry", "calculus", "statistics", "probability", "linear algebra", "discrete mathematics", "number theory", "combinatorics", "graph theory", "set theory", "logic", "proofs", "theorems", "lemmas", "corollaries", "axioms", "postulates", "definitions", "examples", "exercises", "problems", "solutions","physics","mechanics","thermodynamics","optics","electromagnetism","quantum mechanics","relativity","nuclear physics","particle physics","astrophysics","cosmology","fluid dynamics","statistical mechanics","solid state physics","condensed matter physics","plasma physics","biophysics","geophysics","medical physics","computational physics","experimental physics","theoretical physics","physics lab","physics experiment","physics simulation","physics modeling","physics analysis","physics measurement","physics instrumentation","physics data analysis","physics signal processing","physics image processing","physics visualization","physics software","physics programming","physics coding","physics algorithm","physics optimization","physics numerical methods","physics finite element analysis","physics computational fluid dynamics","physics molecular dynamics","physics Monte Carlo simulation","physics machine learning","physics artificial intelligence","physics deep learning","physics neural networks","spanish basic words to speak ",) and not any(word in lower_message for word in ("explain simply", "step by step", "help me understand",))
+        is_quiz_request = any(word in lower_message for word in ("quiz", "test me", "quick quiz", "questions", "flashcards", "study plan", "study-plan", "studyplan", "study schedule", "study-schedule", "studyschedule", "study guide", "study-guide", "studyguide", "study notes", "study-notes", "studynotes", "study material", "study-material", "studymaterial", "study resources", "study-resources", "studyresources", "study help", "study-help", "studyhelp", "study tips", "study-tips", "studytips", "study tricks", "study-tricks", "studytricks", "study hacks", "study-hacks", "studyhacks", "study shortcuts", "study-shortcuts", "studyshortcuts", "study techniques", "study-techniques", "studytechniques", "study methods", "study-methods", "studymethods", "study approaches", "study-approaches", "studyapproaches", "study strategies", "study-strategies", "studystrategies","job plans", "job-plans", "jobplans", "career plans", "career-plans", "careerplans", "learning plans", "learning-plans", "learningplans", "training plans", "training-plans", "trainingplans")) and not any(word in lower_message for word in ("explain simply", "step by step", "help me understand",))
         is_sql_question = bool(re.search(r"\bsql\b", lower_message))
 
         # SQL has no local knowledge base entry, so Gemini is tried first;
@@ -247,6 +255,42 @@ def chat():
             # Greetings, quiz generation, and study-plan requests stay fully local.
             answer = demo_response(message, subject, level)
     return jsonify({"reply": answer, "time": datetime.now().strftime("%I:%M %p")})
+
+
+@app.route("/api/transcribe", methods=["POST"])
+def transcribe():
+    """Convert a short browser microphone recording to text using Sarvam."""
+    if not sarvam_is_configured():
+        return jsonify({"error": "Sarvam voice input is not configured yet."}), 503
+
+    audio = request.files.get("audio")
+    if not audio:
+        return jsonify({"error": "No audio recording was received."}), 400
+
+    audio_bytes = audio.read()
+    if not audio_bytes:
+        return jsonify({"error": "The recording was empty. Please try again."}), 400
+    if len(audio_bytes) > 15 * 1024 * 1024:
+        return jsonify({"error": "Please keep the voice recording under 15 MB."}), 400
+
+    try:
+        from sarvamai import SarvamAI
+
+        client = SarvamAI(api_subscription_key=os.environ["SARVAM_API_KEY"])
+        result = client.speech_to_text.transcribe(
+            file=(audio.filename or "nova-recording.webm", audio_bytes, audio.mimetype or "audio/webm"),
+            model="saaras:v4",
+            language_code="unknown",
+            keyterms=["Nova", "Gemini", "Python", "DBMS", "HTML", "CSS", "JavaScript", "SQL"],
+        )
+        transcript = result.transcript.strip()
+        if not transcript:
+            return jsonify({"error": "I could not hear any speech. Please try again."}), 422
+        return jsonify({"transcript": transcript})
+    except Exception as error:
+        # Keep credentials and raw provider responses out of application logs.
+        app.logger.warning("Sarvam transcription failed: %s", type(error).__name__)
+        return jsonify({"error": "Voice input is unavailable right now. Please try again."}), 502
 
 
 @app.route("/api/flashcards", methods=["POST"])
