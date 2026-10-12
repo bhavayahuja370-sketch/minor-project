@@ -11,6 +11,17 @@ load_dotenv()
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY", "nova-local-development-key")
 
+api_key = (
+    os.getenv("GEMINI_API_KEY")
+    or os.getenv("GOOGLE_API_KEY")
+)
+
+key = os.getenv("GEMINI_API_KEY")
+
+print("Gemini key loaded:", bool(key))
+print("Gemini key prefix:", key[:6] if key else "MISSING")
+print("Gemini key length:", len(key) if key else 0)
+
 QUIZ_QUESTIONS = [
     {
         "topic": "Python",
