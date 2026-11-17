@@ -828,6 +828,35 @@ html[data-theme="dark"] .moon-icon {
     opacity: .72;
 }
 
+#historyModal {
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.history-entry {
+    display: block;
+    width: 100%;
+    margin: 8px 0;
+    padding: 12px;
+    text-align: left;
+    overflow-wrap: anywhere;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--ink);
+    cursor: pointer;
+}
+
+.history-entry:hover {
+    border-color: var(--accent);
+}
+
+.history-entry small {
+    display: block;
+    margin-top: 6px;
+    color: var(--muted);
+}
+
 .puter-credit {
     padding: 0 47px 15px;
     background: var(--paper);
@@ -1134,7 +1163,14 @@ dialog form button:hover {
    RESPONSIVE
 ========================= */
 
+.mobile-chat-tools {
+    display: none;
+}
+
 @media (max-width: 800px) {
+    .mobile-chat-tools {
+        display: flex;
+    }
     .sidebar {
         display: none;
     }

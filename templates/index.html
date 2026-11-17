@@ -26,7 +26,7 @@
         <p class="nav-label">STUDY SPACE</p>
         <button class="nav-item active"><span>◉</span> Study assistant</button>
         <button class="nav-item" id="flashcardButton"><span>▣</span> Flashcards</button>
-        <button class="nav-item"><span>◷</span> Recent chats</button>
+        <button class="nav-item" id="recentChats"><span>◷</span> Recent chats</button>
         <a href="/" class="nav-item"
           style="text-decoration:none; color:inherit; display:flex; align-items:center;"><span>⎋</span> Sign-in
           gateway</a>
@@ -100,6 +100,10 @@
         <div class="messages" id="messages" aria-live="polite"></div>
       </div>
       <div class="composer-wrap">
+        <div class="mobile-chat-tools quick-actions">
+          <button type="button" id="mobileNewChat">＋ New conversation</button>
+          <button type="button" id="mobileRecentChats">◷ Recent chats</button>
+        </div>
         <div class="quick-actions"><button data-prompt="Help me understand this step by step.">Explain
             simply</button><button data-prompt="Create a quick quiz for me.">Quiz me</button><button
             data-prompt="Make a study plan for today.">Study plan</button></div>
@@ -119,6 +123,12 @@
     <form id="flashcardForm"><input id="flashcardTopic" placeholder="e.g. Newton's laws" required><button>Create
         cards</button></form>
     <div id="cards"></div>
+  </dialog>
+  <dialog id="historyModal" aria-labelledby="historyTitle">
+    <button class="close" id="closeHistory" aria-label="Close recent chats">×</button>
+    <h2 id="historyTitle">Recent chats</h2>
+    <p>Select a conversation to read it or continue chatting. Chats are deleted after 6 hours without a new message.</p>
+    <div id="historyList" aria-live="polite"></div>
   </dialog>
   <footer class="puter-credit">Text-to-speech powered by <a href="https://developer.puter.com" target="_blank"
       rel="noopener noreferrer">Puter</a></footer>

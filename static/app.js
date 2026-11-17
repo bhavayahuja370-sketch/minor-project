@@ -11,6 +11,8 @@ let activeSpeakButton = null;
 let mediaRecorder = null;
 let microphoneStream = null;
 let recordingChunks = [];
+let conversationId = null;
+let chatBusy = false;
 
 function setTheme(theme) {
   document.documentElement.dataset.theme = theme;
@@ -99,20 +101,24 @@ async function speakReply(text, button) {
 
 async function sendMessage(value) {
   const text = value.trim();
-  if (!text) return;
+  if (!text || chatBusy) return;
+  chatBusy = true;
   welcome.style.display = 'none';
   addMessage(text, 'user');
   input.value = ''; input.style.height = 'auto';
   const indicator = addMessage('Nova is thinking…', 'assistant', true);
   try {
-    const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, subject: subject.value, level: level.value }) });
+    const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, subject: subject.value, level: level.value, conversation_id: conversationId }) });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'The server could not answer this question.');
+    conversationId = data.conversation_id;
     indicator.remove();
     addMessage(data.reply || data.error || 'I could not generate a response.', 'assistant');
   } catch (error) {
     indicator.remove();
     addMessage(error.message || 'I’m having trouble connecting. Please try again.', 'assistant');
+  } finally {
+    chatBusy = false;
   }
 }
 
@@ -198,7 +204,73 @@ voiceButton.addEventListener('click', toggleVoiceInput);
 document.querySelectorAll('[data-prompt]').forEach(button => button.addEventListener('click', () => sendMessage(button.dataset.prompt)));
 input.addEventListener('input', () => { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 120) + 'px'; });
 input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); chatForm.requestSubmit(); } });
-document.querySelector('#newChat').addEventListener('click', () => { messages.innerHTML = ''; welcome.style.display = ''; input.focus(); });
+document.querySelector('#newChat').addEventListener('click', () => {
+  if (chatBusy || mediaRecorder) return;
+  resetSpeechControls();
+  conversationId = null;
+  messages.innerHTML = '';
+  welcome.style.display = '';
+  input.value = '';
+  input.focus();
+});
+document.querySelector('#mobileNewChat').addEventListener('click', () => document.querySelector('#newChat').click());
+document.querySelector('#mobileRecentChats').addEventListener('click', () => document.querySelector('#recentChats').click());
+
+const historyModal = document.querySelector('#historyModal');
+const historyList = document.querySelector('#historyList');
+window.setInterval(() => {
+  if (historyModal.open && !chatBusy && !mediaRecorder) document.querySelector('#recentChats').click();
+}, 60000);
+document.querySelector('#closeHistory').addEventListener('click', () => historyModal.close());
+document.querySelector('#recentChats').addEventListener('click', async () => {
+  if (chatBusy || mediaRecorder) return;
+  historyModal.showModal();
+  historyList.textContent = 'Loading recent chats…';
+  try {
+    const res = await fetch('/api/conversations');
+    if (!res.ok) throw new Error('Could not load recent chats. Please try again.');
+    const data = await res.json();
+    historyList.replaceChildren();
+    if (!data.conversations.length) historyList.textContent = 'No saved chats yet. Send your first message to start.';
+    for (const conversation of data.conversations) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'history-entry';
+      button.textContent = conversation.title;
+      const date = document.createElement('small');
+      date.textContent = new Date(conversation.updated_at).toLocaleString();
+      button.appendChild(date);
+      button.addEventListener('click', () => openConversation(conversation.id));
+      historyList.appendChild(button);
+    }
+  } catch (error) {
+    historyList.textContent = error.message;
+  }
+});
+
+async function openConversation(id) {
+  if (chatBusy) return;
+  chatBusy = true;
+  try {
+    const res = await fetch(`/api/conversations/${encodeURIComponent(id)}`);
+    if (!res.ok) throw new Error('Could not open this conversation. Close and reopen Recent chats.');
+    const data = await res.json();
+    resetSpeechControls();
+    messages.replaceChildren();
+    welcome.style.display = 'none';
+    conversationId = data.id;
+    subject.value = data.subject;
+    level.value = data.level;
+    for (const message of data.messages) addMessage(message.content, message.role);
+    historyModal.close();
+    input.value = '';
+    input.focus();
+  } catch (error) {
+    historyList.textContent = error.message;
+  } finally {
+    chatBusy = false;
+  }
+}
 
 const modal = document.querySelector('#flashcardModal');
 document.querySelector('#flashcardButton').addEventListener('click', () => modal.showModal());

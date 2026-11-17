@@ -1,17 +1,41 @@
 import os
 import re
 import random
-from datetime import datetime
+import json
+import secrets
+from pathlib import Path
+from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request, session
+import chat_store
 
 load_dotenv()
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY", "nova-local-development-key")
+if not os.environ.get('FLASK_SECRET_KEY'):
+    # Keep browser history accessible after restarting the local server.
+    Path(app.instance_path).mkdir(parents=True, exist_ok=True)
+    secret_path = Path(app.instance_path) / 'session-secret'
+    try:
+        with secret_path.open('x') as secret_file:
+            secret_file.write(secrets.token_hex(32))
+    except FileExistsError:
+        pass
+    app.config['SECRET_KEY'] = secret_path.read_text().strip()
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=365)
+chat_store.init_store(app)
+chat_store.start_cleanup(app)
 
 QUIZ_QUESTIONS = [
+    {
+        "topic": "SQL",
+        "question": "Which SQL command retrieves rows from a table?",
+        "options": "A. DELETE\nB. SELECT\nC. DROP\nD. ALTER",
+        "answer": "B",
+        "explanation": "SELECT retrieves data from one or more database tables.",
+    },
     {
         "topic": "Python",
         "question": "What is the output of `len('Nova')`?",
@@ -57,10 +81,30 @@ QUIZ_QUESTIONS = [
 ]
 
 
+def topic_quiz(message, subject):
+    aliases = {'javascript': 'JavaScript', 'js': 'JavaScript', 'python': 'Python',
+               'pyhton': 'Python', 'java': 'Java', 'html': 'HTML', 'css': 'CSS',
+               'sql': 'SQL', 'dbms': 'DBMS', 'database management': 'DBMS', 'database': 'DBMS'}
+    topic = next((value for name, value in aliases.items()
+                  if re.search(r'\b' + re.escape(name) + r'\b', message.lower())), None)
+    if not topic and re.fullmatch(r'(give me |create |make |a |quick |please |quiz|test me|questions|on |a topic i am studying|[.!?\s])+', message.lower()):
+        topic = next((value for name, value in aliases.items() if subject.lower() == name), None)
+    if not topic:
+        session.pop('active_quiz', None)
+        return 'I have quizzes on Python, HTML, CSS, Java, JavaScript, SQL, and DBMS. Please ask for one of these topics, for example: give me a Python quiz.'
+    quiz = random.choice([q for q in QUIZ_QUESTIONS if q['topic'] == topic])
+    session['active_quiz'] = {'answer': quiz['answer'], 'explanation': quiz['explanation']}
+    return (f"{quiz['topic']} quiz\n\n{quiz['question']}\n\n{quiz['options']}\n\n"
+            'Reply with A, B, C, or D and I will check your answer.')
+
+
 def demo_response(message: str, subject: str, level: str) -> str:
     """Helpful offline fallback so the project runs without an API key."""
     text = message.strip()
     lower = text.lower()
+
+    if any(word in lower for word in ('quiz', 'test me', 'quick quiz', 'questions')):
+        return topic_quiz(message, subject)
 
     greeting_words = ("hello", "hi", "hey", "good morning", "good afternoon", "good evening")
     if any(re.search(rf"\b{re.escape(word)}\b", lower) for word in greeting_words):
@@ -68,14 +112,6 @@ def demo_response(message: str, subject: str, level: str) -> str:
             "Hello! Welcome to Nova, your technical learning assistant. ✦\n\n"
             "I can help you learn Python, DBMS, HTML, CSS, Java, and JavaScript. "
             "You can ask for a definition, features, characteristics, a simple explanation, a quiz, or a study plan."
-        )
-
-    if any(word in lower for word in ("quiz", "test me", "quick quiz", "questions")):
-        quiz = random.choice(QUIZ_QUESTIONS)
-        session["active_quiz"] = {"answer": quiz["answer"], "explanation": quiz["explanation"]}
-        return (
-            f"{quiz['topic']} quiz\n\n{quiz['question']}\n\n{quiz['options']}\n\n"
-            "Reply with A, B, C, or D and I will check your answer."
         )
 
     if any(phrase in lower for phrase in ("explain simply", "step by step", "help me understand")):
@@ -238,6 +274,16 @@ def chat():
     if not message:
         return jsonify({"error": "Please enter a question."}), 400
 
+    conversation_id = data.get('conversation_id')
+    if conversation_id is not None and not isinstance(conversation_id, str):
+        return jsonify({'error': 'Invalid conversation.'}), 400
+    existing = chat_store.conversation(conversation_id) if conversation_id else None
+    if conversation_id and existing is None:
+        return jsonify({'error': 'This chat expired or is unavailable. Click New conversation to continue.'}), 404
+    session.pop('active_quiz', None)
+    if existing and existing['quiz']:
+        session['active_quiz'] = json.loads(existing['quiz'])
+
     active_quiz = session.get("active_quiz")
     selected_answer = re.fullmatch(r"\s*([a-dA-D])[.!?\s]*", message)
     if active_quiz and selected_answer:
@@ -269,7 +315,27 @@ def chat():
         else:
             # Greetings, quiz generation, and study-plan requests stay fully local.
             answer = demo_response(message, subject, level)
-    return jsonify({"reply": answer, "time": datetime.now().strftime("%I:%M %p")})
+    conversation_id = chat_store.save_turn(conversation_id, message, answer, subject, level, session.get('active_quiz'))
+    return jsonify({"reply": answer, "time": datetime.now().strftime("%I:%M %p"), 'conversation_id': conversation_id})
+
+
+@app.get('/api/conversations')
+def recent_conversations():
+    with chat_store.connect() as db:
+        rows = db.execute('SELECT id,title,updated_at FROM conversations WHERE owner=? ORDER BY updated_at DESC LIMIT 100',
+                          (chat_store.owner(),)).fetchall()
+    return jsonify({'conversations': [dict(row) for row in rows]})
+
+
+@app.get('/api/conversations/<conversation_id>')
+def load_conversation(conversation_id):
+    row = chat_store.conversation(conversation_id)
+    if row is None:
+        return jsonify({'error': 'Conversation not found in this browser.'}), 404
+    with chat_store.connect() as db:
+        turns = db.execute('SELECT role,content FROM messages WHERE conversation_id=? ORDER BY id', (conversation_id,)).fetchall()
+    return jsonify({'id': row['id'], 'subject': row['subject'], 'level': row['level'],
+                    'messages': [dict(turn) for turn in turns]})
 
 
 @app.route("/api/transcribe", methods=["POST"])
